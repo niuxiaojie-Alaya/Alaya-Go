@@ -311,6 +311,15 @@ func (db *Database) IncrVersion() {
 	db.nodeVersion++
 }
 
+func (db *Database) MarkNodeVersion(hash common.Hash) {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
+	if cachedNode, ok := db.dirties[hash]; ok {
+		cachedNode.version = db.NodeVersion()
+	}
+}
+
 // DiskDB retrieves the persistent storage backing the trie database.
 func (db *Database) DiskDB() ethdb.KeyValueReader {
 	return db.diskdb
@@ -341,7 +350,8 @@ func (db *Database) resetFreshNode() {
 // size tracking.
 func (db *Database) insert(hash common.Hash, blob []byte, node node) {
 	// If the node's already cached, skip
-	if _, ok := db.dirties[hash]; ok {
+	if cachedNode, ok := db.dirties[hash]; ok {
+		cachedNode.version = db.NodeVersion()
 		return
 	}
 	// Create the cached entry for this node
@@ -499,25 +509,32 @@ func (db *Database) Reference(child common.Hash, parent common.Hash) {
 }
 
 // ReferenceVersion traverses down from the root node, with a version number for each node.
-func (db *Database) ReferenceVersion(root common.Hash) {
+func (db *Database) ReferenceVersion(root common.Hash, cache map[common.Hash]struct{}) {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
 	start := time.Now()
-	db.referenceVersion(root)
+	db.referenceVersion(root, cache)
 	if start.Add(400 * time.Millisecond).Before(time.Now()) {
 		log.Warn("ReferenceVersion overtime", "root", root.String(), "duration", time.Since(start))
 	}
 }
 
 // referenceVersion is the private locked version of referenceVersion.
-func (db *Database) referenceVersion(hash common.Hash) {
+func (db *Database) referenceVersion(hash common.Hash, cache map[common.Hash]struct{}) {
 	node, ok := db.dirties[hash]
 	if !ok {
 		return
 	}
+	if cache != nil {
+		if _, ok := cache[hash]; ok {
+			log.Warn("cache return", "hash", hash)
+			return
+		}
+	}
+
 	node.forChilds(func(h common.Hash) {
-		db.referenceVersion(h)
+		db.referenceVersion(h, cache)
 	})
 	node.version = db.NodeVersion()
 }

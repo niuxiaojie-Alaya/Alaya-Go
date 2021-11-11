@@ -495,13 +495,13 @@ func runRandParallelTest(rt randTest) bool {
 			}
 		case opCommit:
 			//fmt.Printf("%d: opGet, len: %d\n", i, len(values))
-			_, rt[i].err = tr.ParallelCommit(nil)
+			_, rt[i].err = tr.ParallelCommit(nil, nil)
 		case opHash:
 			//fmt.Printf("%d: opHash, len: %d\n", i, len(values))
 			tr.ParallelHash()
 		case opReset:
 			//fmt.Printf("%d: opReset, len: %d\n", i, len(values))
-			hash, err := tr.ParallelCommit(nil)
+			hash, err := tr.ParallelCommit(nil, nil)
 			if err != nil {
 				rt[i].err = err
 				return false

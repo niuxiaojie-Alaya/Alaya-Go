@@ -18,14 +18,14 @@ func TestTrieDag(t *testing.T) {
 	tr.Update([]byte("dog"), []byte("puppy"))
 	tr.Update([]byte("dogglesworth"), []byte("cat"))
 
-	hashed, _, err := tr.parallelHashRoot(nil, nil)
+	hashed, _, err := tr.parallelHashRoot(nil, nil, nil)
 	assert.Nil(t, err)
 
 	checkr, _ := New(common.Hash{}, NewDatabase(memorydb.New()))
 	checkr.Update([]byte("doe"), []byte("reindeer"))
 	checkr.Update([]byte("dog"), []byte("puppy"))
 	checkr.Update([]byte("dogglesworth"), []byte("cat"))
-	ch, _, _ := checkr.hashRoot(nil, nil)
+	ch, _, _ := checkr.hashRoot(nil, nil, nil)
 
 	assert.Equal(t, hashed, ch)
 }

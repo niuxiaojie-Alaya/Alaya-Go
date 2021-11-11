@@ -21,12 +21,11 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/AlayaNetwork/Alaya-Go/metrics"
+	"github.com/AlayaNetwork/Alaya-Go/trie"
 	"golang.org/x/crypto/sha3"
 	"io"
 	"math/big"
 	"time"
-
-
 
 	"github.com/AlayaNetwork/Alaya-Go/common"
 	cvm "github.com/AlayaNetwork/Alaya-Go/common/vm"
@@ -366,7 +365,7 @@ func (self *stateObject) updateRoot(db Database) {
 
 // CommitTrie the storage trie of the object to db.
 // This updates the trie root.
-func (self *stateObject) CommitTrie(db Database) error {
+func (self *stateObject) CommitTrie(db Database, oncache trie.ReferenceVersionCallback) error {
 	self.updateTrie(db)
 	if self.dbErr != nil {
 		return self.dbErr
@@ -376,7 +375,7 @@ func (self *stateObject) CommitTrie(db Database) error {
 	if metrics.EnabledExpensive {
 		defer func(start time.Time) { self.db.StorageCommits += time.Since(start) }(time.Now())
 	}
-	root, err := self.trie.Commit(nil)
+	root, err := self.trie.Commit(nil, oncache)
 
 	if err == nil {
 		self.data.Root = root

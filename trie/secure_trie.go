@@ -144,7 +144,7 @@ func (t *SecureTrie) GetKey(shaKey []byte) []byte {
 //
 // Committing flushes nodes from memory. Subsequent Get calls will load nodes
 // from the database.
-func (t *SecureTrie) Commit(onleaf LeafCallback) (root common.Hash, err error) {
+func (t *SecureTrie) Commit(onleaf LeafCallback, oncache ReferenceVersionCallback) (root common.Hash, err error) {
 	// Write all the pre-images to the actual disk database
 	t.trie.db.lock.Lock()
 	if len(t.getSecKeyCache()) > 0 {
@@ -157,10 +157,10 @@ func (t *SecureTrie) Commit(onleaf LeafCallback) (root common.Hash, err error) {
 	t.trie.db.lock.Unlock()
 
 	// Commit the trie to its intermediate node database
-	return t.trie.Commit(onleaf)
+	return t.trie.Commit(onleaf, oncache)
 }
 
-func (t *SecureTrie) ParallelCommit(onleaf LeafCallback) (root common.Hash, err error) {
+func (t *SecureTrie) ParallelCommit(onleaf LeafCallback, oncache ReferenceVersionCallback) (root common.Hash, err error) {
 	t.trie.db.lock.Lock()
 	if len(t.getSecKeyCache()) > 0 {
 		for hk, key := range t.secKeyCache {
@@ -171,7 +171,7 @@ func (t *SecureTrie) ParallelCommit(onleaf LeafCallback) (root common.Hash, err 
 
 	t.trie.db.lock.Unlock()
 
-	return t.trie.ParallelCommit(onleaf)
+	return t.trie.ParallelCommit(onleaf, oncache)
 }
 
 // Hash returns the root hash of SecureTrie. It does not write to the
@@ -211,7 +211,7 @@ func (t *SecureTrie) NodeIterator(start []byte) NodeIterator {
 // The caller must not hold onto the return value because it will become
 // invalid on the next call to hashKey or secKey.
 func (t *SecureTrie) hashKey(key []byte) []byte {
-	h := newHasher(nil)
+	h := newHasher(nil, nil)
 	h.sha.Reset()
 	h.sha.Write(key)
 	buf := h.sha.Sum(t.hashKeyBuf[:0])

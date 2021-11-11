@@ -117,6 +117,8 @@ type StateDB struct {
 	StorageHashes  time.Duration
 	StorageUpdates time.Duration
 	StorageCommits time.Duration
+
+	ReferenceVersionCallback func(cache common.Hash)
 }
 
 // Create a new state from a given trie.
@@ -1076,7 +1078,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (root common.Hash, err error) 
 				stateObject.dirtyCode = false
 			}
 			// Write any storage changes in the state object to its storage trie.
-			if err := stateObject.CommitTrie(s.db); err != nil {
+			if err := stateObject.CommitTrie(s.db, s.ReferenceVersionCallback); err != nil {
 				return common.Hash{}, err
 			}
 			// Update the object in the main account trie.
@@ -1098,13 +1100,18 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (root common.Hash, err error) 
 		}
 		if account.Root != emptyRoot {
 			s.db.TrieDB().Reference(account.Root, parent)
+			if s.ReferenceVersionCallback != nil {
+				log.Warn("cache hash account root", "hash", account.Root)
+				s.ReferenceVersionCallback(account.Root)
+			}
 		}
 		code := common.BytesToHash(account.CodeHash)
 		if code != emptyCode {
 			s.db.TrieDB().Reference(code, parent)
+			//s.db.TrieDB().MarkNodeVersion(code)
 		}
 		return nil
-	})
+	}, s.ReferenceVersionCallback)
 	if metrics.EnabledExpensive {
 		s.AccountCommits += time.Since(start)
 	}

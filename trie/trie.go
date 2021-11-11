@@ -42,6 +42,8 @@ var (
 // between account and storage tries.
 type LeafCallback func(leaf []byte, parent common.Hash) error
 
+type ReferenceVersionCallback func(cache common.Hash)
+
 // Trie is a Merkle Patricia Trie.
 // The zero value is an empty trie with no database.
 // Use New to create a trie that sits on top of a database.
@@ -513,13 +515,13 @@ func (t *Trie) Root() []byte { return t.Hash().Bytes() }
 // Hash returns the root hash of the trie. It does not write to the
 // database and can be used even if the trie doesn't have one.
 func (t *Trie) Hash() common.Hash {
-	hash, cached, _ := t.hashRoot(nil, nil)
+	hash, cached, _ := t.hashRoot(nil, nil, nil)
 	t.root = cached
 	return common.BytesToHash(hash.(hashNode))
 }
 
 func (t *Trie) ParallelHash() common.Hash {
-	hash, cached, err := t.parallelHashRoot(nil, nil)
+	hash, cached, err := t.parallelHashRoot(nil, nil, nil)
 	if err == nil {
 		t.root = cached
 	}
@@ -528,11 +530,11 @@ func (t *Trie) ParallelHash() common.Hash {
 
 // Commit writes all nodes to the trie's memory database, tracking the internal
 // and external (for account tries) references.
-func (t *Trie) Commit(onleaf LeafCallback) (root common.Hash, err error) {
+func (t *Trie) Commit(onleaf LeafCallback, oncache ReferenceVersionCallback) (root common.Hash, err error) {
 	if t.db == nil {
 		panic("commit called on trie with nil database")
 	}
-	hash, cached, err := t.hashRoot(t.db, onleaf)
+	hash, cached, err := t.hashRoot(t.db, onleaf, oncache)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -540,12 +542,12 @@ func (t *Trie) Commit(onleaf LeafCallback) (root common.Hash, err error) {
 	return common.BytesToHash(hash.(hashNode)), nil
 }
 
-func (t *Trie) ParallelCommit(onleaf LeafCallback) (root common.Hash, err error) {
+func (t *Trie) ParallelCommit(onleaf LeafCallback, oncache ReferenceVersionCallback) (root common.Hash, err error) {
 	if t.db == nil {
 		panic("commit called on trie with nil database")
 	}
 
-	hash, cached, err := t.parallelHashRoot(t.db, onleaf)
+	hash, cached, err := t.parallelHashRoot(t.db, onleaf, oncache)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -558,16 +560,16 @@ func (t *Trie) ParallelCommit(onleaf LeafCallback) (root common.Hash, err error)
 	return common.BytesToHash(hash.(hashNode)), nil
 }
 
-func (t *Trie) hashRoot(db *Database, onleaf LeafCallback) (node, node, error) {
+func (t *Trie) hashRoot(db *Database, onleaf LeafCallback, oncache ReferenceVersionCallback) (node, node, error) {
 	if t.root == nil {
 		return hashNode(emptyRoot.Bytes()), nil, nil
 	}
-	h := newHasher(onleaf)
+	h := newHasher(onleaf, oncache)
 	defer returnHasherToPool(h)
 	return h.hash(t.root, db, true)
 }
 
-func (t *Trie) parallelHashRoot(db *Database, onleaf LeafCallback) (node, node, error) {
+func (t *Trie) parallelHashRoot(db *Database, onleaf LeafCallback, oncache ReferenceVersionCallback) (node, node, error) {
 	if t.root == nil {
 		return hashNode(emptyRoot.Bytes()), nil, nil
 	}
@@ -575,7 +577,7 @@ func (t *Trie) parallelHashRoot(db *Database, onleaf LeafCallback) (node, node, 
 		//t.dag.init(t.root)
 		return t.dag.hash(db, true, onleaf)
 	} else {
-		return t.hashRoot(db, onleaf)
+		return t.hashRoot(db, onleaf, oncache)
 	}
 }
 

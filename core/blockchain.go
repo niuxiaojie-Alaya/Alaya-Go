@@ -205,6 +205,8 @@ type BlockChain struct {
 	terminateInsert func(common.Hash, uint64) bool // Testing hook used to terminate ancient receipt chain insertion.
 
 	cleaner *Cleaner
+
+	referenceVersionCh chan common.Hash
 }
 
 // NewBlockChain returns a fully initialised block chain using information
@@ -1278,7 +1280,37 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 	rawdb.WriteBlock(bc.db, block)
 
 	triedb := bc.stateCache.TrieDB()
+	// Trie 提交的时候并行标记版本
+	// 定义通道
+	var wg sync.WaitGroup
+	bc.referenceVersionCh = make(chan common.Hash, 50)
+	go func() {
+		for item := range bc.referenceVersionCh {
+			log.Warn("Begin ParallelCommit referenceVersionCh", "number", block.NumberU64(), "cache", item)
+			go func(cache common.Hash) {
+				triedb.ReferenceVersion(cache, nil)
+				wg.Done()
+				log.Warn("wg Done()", "cache", cache)
+			}(item)
+		}
+	}()
+	log.Warn("WriteBlockWithState state Commit begin", "number", block.NumberU64(), "version", triedb.NodeVersion())
+	// ReferenceVersion callback
+	caches := make(map[common.Hash]struct{})
+	ReferenceVersionCallback := func(cache common.Hash) {
+		log.Warn("ReferenceVersionCallback", "cache", cache, "number", block.NumberU64(), "version", triedb.NodeVersion())
+		wg.Add(1)
+		caches[cache] = struct{}{}
+		//triedb.ReferenceVersion(cache, nil)
+		bc.referenceVersionCh <- cache
+	}
+	state.ReferenceVersionCallback = ReferenceVersionCallback
+	//
 	root, err := state.Commit(true)
+	close(bc.referenceVersionCh)
+	wg.Wait()
+	bc.referenceVersionCh = nil
+	log.Warn("WriteBlockWithState state Commit end", "number", block.NumberU64(), "version", triedb.NodeVersion(), "caches", len(caches))
 
 	if err != nil {
 		log.Error("check block is EIP158 error", "hash", block.Hash(), "number", block.NumberU64())
@@ -1290,7 +1322,7 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 		limit := common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
 		oversize := false
 		if !(bc.cacheConfig.DBGCMpt && !bc.cacheConfig.DBDisabledGC.IsSet()) {
-			triedb.ReferenceVersion(root)
+			triedb.ReferenceVersion(root, caches)
 			if err := triedb.Commit(root, false, false); err != nil {
 				log.Error("Commit to triedb error", "root", root)
 				return NonStatTy, err
@@ -1299,7 +1331,7 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 			nodes, _ := triedb.Size()
 			oversize = nodes > limit
 		} else {
-			triedb.ReferenceVersion(root)
+			triedb.ReferenceVersion(root, caches)
 			triedb.DereferenceDB(currentBlock.Root())
 
 			if err := triedb.Commit(root, false, false); err != nil {

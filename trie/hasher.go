@@ -17,6 +17,7 @@
 package trie
 
 import (
+	"github.com/AlayaNetwork/Alaya-Go/log"
 	"golang.org/x/crypto/sha3"
 	"hash"
 	"sync"
@@ -27,9 +28,10 @@ import (
 )
 
 type hasher struct {
-	tmp    sliceBuffer
-	sha    keccakState
-	onleaf LeafCallback
+	tmp     sliceBuffer
+	sha     keccakState
+	onleaf  LeafCallback
+	oncache ReferenceVersionCallback
 }
 
 // keccakState wraps sha3.state. In addition to the usual hash methods, it also supports
@@ -61,9 +63,10 @@ var hasherPool = sync.Pool{
 	},
 }
 
-func newHasher(onleaf LeafCallback) *hasher {
+func newHasher(onleaf LeafCallback, oncache ReferenceVersionCallback) *hasher {
 	h := hasherPool.Get().(*hasher)
 	h.onleaf = onleaf
+	h.oncache = oncache
 	return h
 }
 
@@ -80,6 +83,10 @@ func (h *hasher) hash(n node, db *Database, force bool) (node, node, error) {
 			return hash, n, nil
 		}
 		if !dirty {
+			log.Warn("cache hash", "hash", common.BytesToHash(hash), "oncache", h.oncache != nil)
+			if h.oncache != nil {
+				h.oncache(common.BytesToHash(hash))
+			}
 			switch n.(type) {
 			case *fullNode, *shortNode:
 				return hash, hash, nil
@@ -97,6 +104,15 @@ func (h *hasher) hash(n node, db *Database, force bool) (node, node, error) {
 	if err != nil {
 		return hashNode{}, n, err
 	}
+	//if db != nil {
+	//	db.lock.Lock()
+	//	if h, isHash := hashed.(hashNode); isHash {
+	//		if cachedNode, ok := db.dirties[common.BytesToHash(h)]; ok {
+	//			cachedNode.version = db.NodeVersion()
+	//		}
+	//	}
+	//	db.lock.Unlock()
+	//}
 	// Cache the hash of the node for later reuse and remove
 	// the dirty flag in commit mode. It's fine to assign these values directly
 	// without copying the node first because hashChildren copies it.
@@ -165,6 +181,12 @@ func (h *hasher) hashChildren(original node, db *Database) (node, node, error) {
 func (h *hasher) store(n node, db *Database, force bool) (node, error) {
 	// Don't store hashes or empty nodes.
 	if _, isHash := n.(hashNode); n == nil || isHash {
+		if isHash {
+			log.Warn("cache hash hashNode", "hash", common.BytesToHash(n.(hashNode)), "oncache", h.oncache != nil)
+			if h.oncache != nil {
+				h.oncache(common.BytesToHash(n.(hashNode)))
+			}
+		}
 		return n, nil
 	}
 	// Generate the RLP encoding of the node

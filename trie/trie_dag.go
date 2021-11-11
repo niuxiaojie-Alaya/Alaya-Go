@@ -182,7 +182,7 @@ func (td *trieDag) hash(db *Database, force bool, onleaf LeafCallback) (node, no
 
 	process := func() {
 		//log.Trace("Do hash", "me", fmt.Sprintf("%p", td), "routineID", goid.Get(), "dag", fmt.Sprintf("%p", td.dag), "nodes", len(td.nodes), "topLevel", td.dag.topLevel.Len(), "consumed", td.dag.totalConsumed, "vtxs", td.dag.totalVertexs, "cv", td.dag.cv)
-		hasher := newHasher(onleaf)
+		hasher := newHasher(onleaf, nil)
 
 		id := td.dag.waitPop()
 		if id == invalidID {

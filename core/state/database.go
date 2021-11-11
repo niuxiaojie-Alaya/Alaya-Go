@@ -59,8 +59,8 @@ type Trie interface {
 	TryGet(key []byte) ([]byte, error)
 	TryUpdate(key, value []byte) error
 	TryDelete(key []byte) error
-	Commit(onleaf trie.LeafCallback) (common.Hash, error)
-	ParallelCommit(onleaf trie.LeafCallback) (common.Hash, error)
+	Commit(onleaf trie.LeafCallback, oncache trie.ReferenceVersionCallback) (common.Hash, error)
+	ParallelCommit(onleaf trie.LeafCallback, oncache trie.ReferenceVersionCallback) (common.Hash, error)
 	Hash() common.Hash
 	ParallelHash() common.Hash
 	NodeIterator(startKey []byte) trie.NodeIterator
